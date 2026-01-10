@@ -19,7 +19,7 @@ You might notice `ffmpeg.dll` or similar files in the release folder. **Gemini G
 ## Installation
 
 ### Windows (Portable)
-1. Download the latest `Gemini GO-Portable.exe` from the [Releases](https://github.com/yourusername/gemini-go/releases) page.
+1. Download the latest `Gemini GO-Portable.exe` from the [Releases](https://github.com/koliploik/gemini-go/releases) page.
 2. Run the executable to start the application.
 
 ### From Source
