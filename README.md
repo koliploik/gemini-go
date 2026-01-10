@@ -16,6 +16,13 @@
 
 You might notice `ffmpeg.dll` or similar files in the release folder. **Gemini GO** uses Electron (which is built on Chromium). FFMPEG is a core component of Chromium required for media playback. It is automatically included to ensure that if Gemini needs to play any audio or video content, it works out of the box. We do not use it for any other processing.
 
+## Security & Signing
+
+Because this is a free, open-source project, we do not purchase expensive code-signing certificates.
+
+- **Windows**: You may see a "Windows protected your PC" (SmartScreen) warning because the app is not signed with a purchased certificate. Click **"More info"** and then **"Run anyway"**.
+- **macOS**: Without an Apple Developer Account, the app is unsigned. You will need to **Right Click** the app and select **Open** to bypass the "Unidentified Developer" warning.
+
 ## Installation
 
 ### Windows (Portable)
@@ -27,7 +34,7 @@ To run Gemini GO from source, you'll need [Node.js](https://nodejs.org/) install
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/gemini-go.git
+   git clone https://github.com/koliploik/gemini-go.git
    cd gemini-go
    ```
 
