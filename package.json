@@ -1,0 +1,75 @@
+{
+  "name": "gemini-go",
+  "private": true,
+  "version": "1.0.6",
+  "author": "Antigravity",
+  "description": "Gemini Desktop App",
+  "main": "dist-electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "eslint .",
+    "preview": "vite preview",
+    "dist": "npm run build && electron-builder",
+    "dist:all": "set CSC_IDENTITY_AUTO_DISCOVERY=false && npm run build && electron-builder",
+    "dist:mac": "set CSC_IDENTITY_AUTO_DISCOVERY=false && npm run build && electron-builder --mac"
+  },
+  "build": {
+    "appId": "com.geminigo.app",
+    "productName": "Gemini GO",
+    "icon": "public/app-icon.png",
+    "win": {
+      "target": [
+        "dir"
+      ],
+      "icon": "public/icon.ico",
+      "forceCodeSigning": false,
+      "artifactName": "${productName}-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-Portable.${ext}",
+      "useZip": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": "zip",
+      "icon": "public/app-icon.png",
+      "artifactName": "${productName}-${version}-mac.${ext}",
+      "identity": null
+    },
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ]
+  },
+  "dependencies": {
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/node": "^24.10.1",
+    "@types/react": "^19.2.5",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.1.1",
+    "electron": "^39.2.7",
+    "electron-builder": "^26.4.0",
+    "eslint": "^9.39.1",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.4.24",
+    "globals": "^16.5.0",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vite": "^7.2.4",
+    "vite-plugin-electron": "^0.29.0",
+    "vite-plugin-electron-renderer": "^0.14.6"
+  }
+}
