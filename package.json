@@ -1,7 +1,7 @@
 {
   "name": "gemini-go",
   "private": true,
-  "version": "1.0.6",
+  "version": "1.0.7",
   "author": "Antigravity",
   "description": "Gemini Desktop App",
   "main": "dist-electron/main.js",
@@ -20,6 +20,7 @@
     "icon": "public/app-icon.png",
     "win": {
       "target": [
+        "portable",
         "dir"
       ],
       "icon": "public/icon.ico",
