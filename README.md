@@ -4,6 +4,9 @@
 
 **Gemini GO** is a lightweight, Electron-based desktop application wrapper for Google Gemini. It provides a dedicated workspace for your AI interactions, keeping them separate from your browser tabs.
 
+> [!NOTE]
+> **Gemini GO** is currently in its **initial release** phase. We welcome issues, feature requests, and contributions!
+
 ## Features
 
 - **Dedicated Window**: Access Gemini in a standalone, distraction-free window.
@@ -68,3 +71,9 @@ This will create the executable and portable files in the `release/` directory.
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+<p align="center">
+  Developed in Italy with <b>Antigravity</b> 🧠 ❤️
+</p>
