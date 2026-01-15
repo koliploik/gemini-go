@@ -8,17 +8,26 @@ yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
 build_log.txt
+builder-debug.log
+*.ts.timestamp-*
 
+# Dependencies
+node_modules/
 
-node_modules
+# Build outputs
 dist
 dist-ssr
+dist-electron
 release/
 builder_cache/
-source-icon.png
 *.zip
-*.local
 
+# Local development files
+.env
+.env*.local
+*.local
+source-icon.png
+build_log.txt
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 
 function App() {
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false)
@@ -7,12 +7,20 @@ function App() {
     const saved = localStorage.getItem('shortcutEnabled')
     return saved !== null ? JSON.parse(saved) : true
   })
+  const [theme, setTheme] = useState(() => {
+    return localStorage.getItem('theme') || 'dark'
+  })
+  const [shortcutKey, setShortcutKey] = useState(() => {
+    return localStorage.getItem('shortcutKey') || 'Alt+Space'
+  })
 
   // Sync initial state on mount (in case main process differs)
-  if (window.electronAPI) {
-    // Just send current state to be sure
-    window.electronAPI.setShortcutEnabled(isShortcutEnabled)
-  }
+  useEffect(() => {
+    if (window.electronAPI) {
+      // Just send current state to be sure
+      window.electronAPI.setShortcutEnabled(isShortcutEnabled, shortcutKey)
+    }
+  }, []) // Run once on mount
 
   const handleToggleTop = () => {
     const newState = !isAlwaysOnTop
@@ -24,7 +32,21 @@ function App() {
     const newState = !isShortcutEnabled
     setIsShortcutEnabled(newState)
     localStorage.setItem('shortcutEnabled', JSON.stringify(newState))
-    window.electronAPI.setShortcutEnabled(newState)
+    window.electronAPI.setShortcutEnabled(newState, shortcutKey)
+  }
+
+  const handleKeyChange = (key: string) => {
+    setShortcutKey(key)
+    localStorage.setItem('shortcutKey', key)
+    if (isShortcutEnabled) {
+      window.electronAPI.setShortcutEnabled(true, key)
+    }
+  }
+
+  const handleToggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(newTheme)
+    localStorage.setItem('theme', newTheme)
   }
 
   const handleClose = () => {
@@ -39,7 +61,7 @@ function App() {
   }
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${theme}-theme`}>
       <header className="titlebar">
         <div className="app-title">Gemini GO</div>
         <div className="controls">
@@ -74,13 +96,51 @@ function App() {
           </div>
           <div className="setting-item">
             <p className="hint">Shortcut: Global hotkey to toggle window.</p>
+            <div className="shortcut-config">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={isShortcutEnabled}
+                  onChange={handleToggleShortcut}
+                />
+                <span>Enable Shortcut</span>
+              </label>
+
+              {isShortcutEnabled && (
+                <div className="shortcut-options">
+                  <label className="radio-label">
+                    <input
+                      type="radio"
+                      name="shortcutKey"
+                      value="Alt+Space"
+                      checked={shortcutKey === 'Alt+Space'}
+                      onChange={() => handleKeyChange('Alt+Space')}
+                    />
+                    <span>Alt+Space</span>
+                  </label>
+                  <label className="radio-label">
+                    <input
+                      type="radio"
+                      name="shortcutKey"
+                      value="Ctrl+Space"
+                      checked={shortcutKey === 'Ctrl+Space'}
+                      onChange={() => handleKeyChange('Ctrl+Space')}
+                    />
+                    <span>Ctrl+Space</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="setting-item">
+            <p className="hint">Theme: Choose between Light and Dark mode.</p>
             <label className="toggle-switch">
               <input
                 type="checkbox"
-                checked={isShortcutEnabled}
-                onChange={handleToggleShortcut}
+                checked={theme === 'light'}
+                onChange={handleToggleTheme}
               />
-              <span>Enable Alt+Space</span>
+              <span>Light Mode</span>
             </label>
           </div>
         </div>

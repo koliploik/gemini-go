@@ -7,7 +7,7 @@ declare global {
             minimize: () => void
             close: () => void
             clearSession: () => void
-            setShortcutEnabled: (enabled: boolean) => void
+            setShortcutEnabled: (enabled: boolean, key: string) => void
         }
     }
 

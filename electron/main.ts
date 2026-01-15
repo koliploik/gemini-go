@@ -44,6 +44,29 @@ function createWindow() {
         win.loadFile(path.join(process.env.DIST!, 'index.html'))
     }
 
+    // Global Context Menu (Right-click) - works for main window AND webviews
+    app.on('web-contents-created', (event, webContents) => {
+        webContents.on('context-menu', (event, params) => {
+            const menu = Menu.buildFromTemplate([
+                {
+                    label: 'Copia',
+                    role: 'copy',
+                    enabled: params.selectionText.length > 0
+                },
+                {
+                    label: 'Incolla',
+                    role: 'paste'
+                },
+                { type: 'separator' },
+                {
+                    label: 'Seleziona tutto',
+                    role: 'selectAll'
+                }
+            ])
+            menu.popup()
+        })
+    })
+
     // Basic IPC handlers
     ipcMain.on('toggle-always-on-top', (event, flag) => {
         if (win) win.setAlwaysOnTop(flag)
@@ -123,21 +146,23 @@ app.whenReady().then(() => {
         toggleWindow('tray')
     })
 
-    registerShortcuts()
+    // We don't call registerShortcuts here anymore, 
+    // it will be called by the renderer sync on mount.
 })
 
-function registerShortcuts() {
-    globalShortcut.unregisterAll() // Clear existing first
-    // Try registering Alt+Space, fallback to Ctrl+Space if failed
-    let ret = globalShortcut.register('Alt+Space', () => {
+function registerShortcuts(key: string) {
+    // Unregister everything first to ensure a clean state
+    globalShortcut.unregisterAll()
+
+    // Register the specific key requested
+    let ret = globalShortcut.register(key, () => {
         toggleWindow('shortcut')
     })
 
     if (!ret) {
-        console.log('Alt+Space failed, trying Ctrl+Space')
-        ret = globalShortcut.register('Ctrl+Space', () => {
-            toggleWindow('shortcut')
-        })
+        console.warn(`Failed to register shortcut: ${key}. It might be in use by another application.`)
+    } else {
+        console.log(`Global shortcut ${key} registered successfully.`)
     }
 }
 
@@ -146,9 +171,9 @@ function unregisterShortcuts() {
 }
 
 // IPC Handler for Shortcut Toggle
-ipcMain.on('set-shortcut-enabled', (event, enabled) => {
+ipcMain.on('set-shortcut-enabled', (event, enabled, key) => {
     if (enabled) {
-        registerShortcuts()
+        registerShortcuts(key)
     } else {
         unregisterShortcuts()
     }
