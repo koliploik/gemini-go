@@ -7,4 +7,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     close: () => ipcRenderer.send('close-window'),
     clearSession: () => ipcRenderer.send('clear-session'),
     setShortcutEnabled: (enabled: boolean, key: string) => ipcRenderer.send('set-shortcut-enabled', enabled, key),
+    onOpenSettings: (callback: () => void) => {
+        ipcRenderer.on('open-settings', () => callback())
+    }
 })

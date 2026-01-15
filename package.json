@@ -1,7 +1,7 @@
 {
   "name": "gemini-go",
   "private": true,
-  "version": "1.0.8",
+  "version": "1.0.9",
   "author": "Antigravity",
   "description": "Gemini Desktop App",
   "main": "dist-electron/main.js",

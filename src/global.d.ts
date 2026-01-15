@@ -8,6 +8,7 @@ declare global {
             close: () => void
             clearSession: () => void
             setShortcutEnabled: (enabled: boolean, key: string) => void
+            onOpenSettings: (callback: () => void) => void
         }
     }
 

@@ -148,7 +148,72 @@ app.whenReady().then(() => {
 
     // We don't call registerShortcuts here anymore, 
     // it will be called by the renderer sync on mount.
+    createApplicationMenu()
 })
+
+function createApplicationMenu() {
+    if (process.platform !== 'darwin') {
+        Menu.setApplicationMenu(null) // Keep it clean on Windows/Linux
+        return
+    }
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+        {
+            label: app.name,
+            submenu: [
+                { role: 'about' },
+                { type: 'separator' },
+                {
+                    label: 'Preferences...',
+                    accelerator: 'Command+,',
+                    click: () => {
+                        win?.webContents.send('open-settings')
+                    }
+                },
+                { type: 'separator' },
+                { role: 'services' },
+                { type: 'separator' },
+                { role: 'hide' },
+                { role: 'hideOthers' },
+                { role: 'unhide' },
+                { type: 'separator' },
+                { role: 'quit' }
+            ]
+        },
+        {
+            label: 'Edit',
+            submenu: [
+                { role: 'undo' },
+                { role: 'redo' },
+                { type: 'separator' },
+                { role: 'cut' },
+                { role: 'copy' },
+                { role: 'paste' },
+                { role: 'selectAll' }
+            ]
+        },
+        {
+            label: 'Window',
+            submenu: [
+                { role: 'minimize' },
+                { role: 'zoom' },
+                { type: 'separator' },
+                {
+                    label: 'Close Window',
+                    accelerator: 'Command+W',
+                    click: () => {
+                        win?.hide()
+                    }
+                },
+                { type: 'separator' },
+                { role: 'front' }
+            ]
+        }
+    ]
+
+    const menu = Menu.buildFromTemplate(template)
+    Menu.setApplicationMenu(menu)
+}
 
 function registerShortcuts(key: string) {
     // Unregister everything first to ensure a clean state

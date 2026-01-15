@@ -19,6 +19,11 @@ function App() {
     if (window.electronAPI) {
       // Just send current state to be sure
       window.electronAPI.setShortcutEnabled(isShortcutEnabled, shortcutKey)
+
+      // Listen for open-settings signal (macOS Cmd+,)
+      window.electronAPI.onOpenSettings(() => {
+        setShowSettings(true)
+      })
     }
   }, []) // Run once on mount
 
