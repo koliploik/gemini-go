@@ -10,10 +10,12 @@
 ## Features
 
 - **Dedicated Window**: Access Gemini in a standalone, distraction-free window.
-- **Always on Top**: Toggle the window to stay on top of other applications for easy reference while working.
-- **Global Shortcut**: Quickly toggle the visibility of Gemini GO with `Alt+Space` (or `Ctrl+Space` if `Alt+Space` is taken).
+- **Always on Top**: Toggle the window to stay on top of other applications.
+- **Customizable Global Shortcut**: Choose your preferred toggle key: `Alt+Space` or `Ctrl+Space`.
+- **Theme Support**: Switch between **Light** and **Dark** modes in settings.
+- **Context Menu**: Full right-click support (Copy/Paste/Select All) even inside Gemini.
 - **System Tray Support**: Minimizes to the system tray to keep your taskbar clean.
-- **Portable**: Available as a portable executable for Windows – no installation required.
+- **Portable & Unpacked**: Available as a single `.exe` or a zipped directory for Windows.
 
 ## Why is FFMPEG here?
 
@@ -26,14 +28,9 @@ Because this is a free, open-source project, we do not purchase expensive code-s
 - **Windows**: You may see a "Windows protected your PC" (SmartScreen) warning because the app is not signed with a purchased certificate. Click **"More info"** and then **"Run anyway"**.
 - **macOS**: Without an Apple Developer Account, the app is unsigned. You will need to **Right Click** the app and select **Open** to bypass the "Unidentified Developer" warning.
 
-## Installation
+## Development & Testing
 
-### Windows (Portable)
-1. Download the latest `Gemini GO-Portable.exe` from the [Releases](https://github.com/koliploik/gemini-go/releases) page.
-2. Run the executable to start the application.
-
-### From Source
-To run Gemini GO from source, you'll need [Node.js](https://nodejs.org/) installed on your machine.
+To test the application locally or run it from source:
 
 1. Clone the repository:
    ```bash
@@ -46,10 +43,17 @@ To run Gemini GO from source, you'll need [Node.js](https://nodejs.org/) install
    npm install
    ```
 
-3. Start the development server:
+3. **Start the development server**:
    ```bash
    npm run dev
    ```
+
+## Installation (Windows)
+
+You can download the latest version from the [Releases](https://github.com/koliploik/gemini-go/releases) page:
+
+- **Portable (`-Portable.exe`)**: A single file that runs without installation.
+- **Unpacked (`.zip`)**: A compressed archive of the application directory.
 
 ## Building
 
@@ -59,7 +63,7 @@ To build the application for production:
 npm run dist
 ```
 
-This will create the executable and portable files in the `release/` directory.
+This will create the release artifacts in the `release/` directory.
 
 ## Tech Stack
 
