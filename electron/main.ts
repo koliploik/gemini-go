@@ -37,6 +37,11 @@ function createWindow() {
             contextIsolation: true,
         },
     })
+    
+    // Set a custom User Agent to mimic a standard Chrome browser
+    // This is crucial for Google services to work correctly without blocking "Electron"
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+    win.webContents.setUserAgent(userAgent)
 
     if (VITE_DEV_SERVER_URL) {
         win.loadURL(VITE_DEV_SERVER_URL)

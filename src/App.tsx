@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 
 function App() {
   const [isAlwaysOnTop, setIsAlwaysOnTop] = useState(false)
@@ -13,6 +13,7 @@ function App() {
   const [shortcutKey, setShortcutKey] = useState(() => {
     return localStorage.getItem('shortcutKey') || 'Alt+Space'
   })
+  const webviewRef = useRef<any>(null)
 
   // Sync initial state on mount (in case main process differs)
   useEffect(() => {
@@ -58,6 +59,12 @@ function App() {
     window.electronAPI.close()
   }
 
+  const handleReload = () => {
+    if (webviewRef.current) {
+      webviewRef.current.reload()
+    }
+  }
+
   const handleLogout = () => {
     if (confirm('Are you sure you want to clear your session and logout?')) {
       window.electronAPI.clearSession()
@@ -70,6 +77,13 @@ function App() {
       <header className="titlebar">
         <div className="app-title">Gemini GO</div>
         <div className="controls">
+          <button
+            className="control-btn"
+            onClick={handleReload}
+            title="Refresh"
+          >
+            🔄
+          </button>
           <button
             className={`control-btn ${isAlwaysOnTop ? 'active' : ''}`}
             onClick={handleToggleTop}
@@ -152,8 +166,10 @@ function App() {
       ) : (
         <div className="webview-container">
           <webview
+            ref={webviewRef}
             src="https://gemini.google.com"
             className="gemini-view"
+            useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             // @ts-ignore
             allowpopups="true"
           />
