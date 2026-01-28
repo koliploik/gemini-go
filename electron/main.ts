@@ -22,6 +22,10 @@ let win: BrowserWindow | null
 let tray: Tray | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
+// Optimize for performance and prevent hangs during streaming
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+
 function createWindow() {
     win = new BrowserWindow({
         width: 1000,
@@ -37,10 +41,9 @@ function createWindow() {
             contextIsolation: true,
         },
     })
-    
-    // Set a custom User Agent to mimic a standard Chrome browser
-    // This is crucial for Google services to work correctly without blocking "Electron"
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+
+    // Set a modern Chrome User Agent to ensure compatibility and stability
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
     win.webContents.setUserAgent(userAgent)
 
     if (VITE_DEV_SERVER_URL) {
