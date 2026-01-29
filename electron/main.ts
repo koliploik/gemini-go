@@ -129,6 +129,10 @@ function createWindow() {
         if (win) win.setAlwaysOnTop(flag)
     })
 
+    ipcMain.handle('get-app-version', () => {
+        return app.getVersion()
+    })
+
     ipcMain.on('minimize-window', () => {
         if (win) win.minimize()
     })

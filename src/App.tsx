@@ -13,11 +13,15 @@ function App() {
   const [shortcutKey, setShortcutKey] = useState(() => {
     return localStorage.getItem('shortcutKey') || 'Alt+Space'
   })
+  const [appVersion, setAppVersion] = useState('')
   const webviewRef = useRef<any>(null)
 
   // Sync initial state on mount (in case main process differs)
   useEffect(() => {
     if (window.electronAPI) {
+      // Get app version
+      window.electronAPI.getAppVersion().then(setAppVersion)
+
       // Just send current state to be sure
       window.electronAPI.setShortcutEnabled(isShortcutEnabled, shortcutKey)
 
@@ -169,6 +173,9 @@ function App() {
               />
               <span>Light Mode</span>
             </label>
+          </div>
+          <div className="setting-footer" style={{ marginTop: '20px', opacity: 0.6, fontSize: '0.9em', textAlign: 'center' }}>
+            <p>Version {appVersion}</p>
           </div>
         </div>
       ) : (

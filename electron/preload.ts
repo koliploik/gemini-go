@@ -12,5 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
     },
     onAuthComplete: (callback: () => void) => {
         ipcRenderer.on('auth-complete', () => callback())
-    }
+    },
+    getAppVersion: () => ipcRenderer.invoke('get-app-version')
 })
