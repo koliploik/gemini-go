@@ -1,4 +1,4 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session, dialog } from 'electron'
 import path from 'node:path'
 
 // Auth window reference
@@ -32,10 +32,17 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 
 // Prevent connection drops during long streaming responses
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling')
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials')
 
 // Improve network stability for streaming
 app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
+
+// Disable WebAuthn/Passkeys to prevent Google from requiring them
+// This forces traditional password authentication
+app.commandLine.appendSwitch('disable-webauthn')
+
+// Make the app appear more like a standard browser
+app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
 function createWindow() {
     win = new BrowserWindow({
@@ -54,12 +61,10 @@ function createWindow() {
         },
     })
 
-    // Build a Chrome-like user agent using the ACTUAL Chromium version from Electron
-    // This prevents version mismatch detection by Google
-    const chromiumVersion = process.versions.chrome
-    const userAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
+    // Use Firefox user agent to bypass Chromium-specific checks
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
     win.webContents.setUserAgent(userAgent)
-    console.log(`Using Chromium version: ${chromiumVersion}`)
+    console.log('Using Firefox UA')
 
     if (VITE_DEV_SERVER_URL) {
         win.loadURL(VITE_DEV_SERVER_URL)
@@ -89,7 +94,8 @@ function createWindow() {
             menu.popup()
         })
 
-        // Handle Google OAuth - open in auth window with shared session
+        // Handle Google OAuth - open in SYSTEM BROWSER (Chrome/Edge)
+        // Google blocks embedded browsers but trusts the user's real browser
         if (webContents.getType() === 'webview') {
             // Prevent webview from being throttled during streaming
             webContents.setBackgroundThrottling(false)
@@ -100,13 +106,16 @@ function createWindow() {
             })
 
             webContents.setWindowOpenHandler(({ url }) => {
-                // Handle Google authentication URLs in a dedicated auth window
+                // Handle Google authentication URLs
+                // Instead of opening a popup (which Google blocks), navigate the webview directly
                 if (url.includes('accounts.google.com') ||
                     url.includes('google.com/signin') ||
                     url.includes('accounts.youtube.com')) {
 
-                    // Create auth window with same session partition as webview
-                    openAuthWindow(url)
+                    // Navigate the webview itself to the auth URL
+                    // This avoids the popup/embedded browser detection
+                    webContents.loadURL(url)
+
                     return { action: 'deny' }
                 }
                 // Allow other popups to open normally
@@ -172,13 +181,31 @@ function openAuthWindow(authUrl: string) {
             session: geminiSession,  // Share session with webview
             nodeIntegration: false,
             contextIsolation: true,
+            sandbox: false,  // Disable sandbox to appear more like regular browser
         },
     })
 
-    // Set a standard Chrome user agent using actual Chromium version
-    const chromiumVersion = process.versions.chrome
-    const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
-    authWindow.webContents.setUserAgent(chromeUserAgent)
+    // Use Firefox user agent to bypass Chromium-specific embedded browser checks
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
+    authWindow.webContents.setUserAgent(userAgent)
+
+    // Inject script to hide Electron detection markers
+    authWindow.webContents.on('dom-ready', () => {
+        authWindow?.webContents.executeJavaScript(`
+            // Hide webdriver flag (automation detection)
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+            // Hide Electron from plugins
+            Object.defineProperty(navigator, 'plugins', {
+                get: () => [1, 2, 3, 4, 5]
+            });
+            // Hide Electron from languages  
+            Object.defineProperty(navigator, 'languages', {
+                get: () => ['en-US', 'en']
+            });
+        `).catch(() => { })
+    })
 
     // Show the window once it's ready
     authWindow.once('ready-to-show', () => {
@@ -242,13 +269,12 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
     // Configure the persistent session for the Gemini webview
-    // Use the ACTUAL Chromium version to prevent detection/compatibility issues
-    const chromiumVersion = process.versions.chrome
-    const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
+    // Use Firefox user agent to bypass Chromium-specific checks
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
 
     const geminiSession = session.fromPartition('persist:gemini')
-    geminiSession.setUserAgent(chromeUserAgent)
-    console.log(`Gemini session configured with Chrome/${chromiumVersion}`)
+    geminiSession.setUserAgent(userAgent)
+    console.log('Gemini session configured with Firefox UA')
 
     createWindow()
 
