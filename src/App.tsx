@@ -25,6 +25,14 @@ function App() {
       window.electronAPI.onOpenSettings(() => {
         setShowSettings(true)
       })
+
+      // Listen for auth completion to reload webview
+      window.electronAPI.onAuthComplete(() => {
+        console.log('Auth completed, reloading webview...')
+        if (webviewRef.current) {
+          webviewRef.current.reload()
+        }
+      })
     }
   }, []) // Run once on mount
 
@@ -169,7 +177,6 @@ function App() {
             ref={webviewRef}
             src="https://gemini.google.com"
             className="gemini-view"
-            useragent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36"
             partition="persist:gemini"
             // @ts-ignore
             allowpopups="true"

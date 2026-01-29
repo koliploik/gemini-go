@@ -1,5 +1,8 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session } from 'electron'
 import path from 'node:path'
+
+// Auth window reference
+let authWindow: BrowserWindow | null = null
 
 // Type-safe app reference
 const myApp = app as any
@@ -23,8 +26,16 @@ let tray: Tray | null = null
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL']
 
 // Optimize for performance and prevent hangs during streaming
+// These flags prevent Chromium from throttling the app when in background
 app.commandLine.appendSwitch('disable-background-timer-throttling')
 app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+
+// Prevent connection drops during long streaming responses
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling')
+
+// Improve network stability for streaming
+app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
 
 function createWindow() {
     win = new BrowserWindow({
@@ -39,12 +50,16 @@ function createWindow() {
             webviewTag: true, // Critical for embedding Gemini
             nodeIntegration: false,
             contextIsolation: true,
+            backgroundThrottling: false, // Prevent throttling when window loses focus
         },
     })
 
-    // Set a modern Chrome User Agent to ensure compatibility and stability
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36'
+    // Build a Chrome-like user agent using the ACTUAL Chromium version from Electron
+    // This prevents version mismatch detection by Google
+    const chromiumVersion = process.versions.chrome
+    const userAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
     win.webContents.setUserAgent(userAgent)
+    console.log(`Using Chromium version: ${chromiumVersion}`)
 
     if (VITE_DEV_SERVER_URL) {
         win.loadURL(VITE_DEV_SERVER_URL)
@@ -73,6 +88,31 @@ function createWindow() {
             ])
             menu.popup()
         })
+
+        // Handle Google OAuth - open in auth window with shared session
+        if (webContents.getType() === 'webview') {
+            // Prevent webview from being throttled during streaming
+            webContents.setBackgroundThrottling(false)
+
+            // Ensure webview keeps running when window is occluded/hidden
+            webContents.on('render-process-gone', (event, details) => {
+                console.error('Webview render process gone:', details.reason)
+            })
+
+            webContents.setWindowOpenHandler(({ url }) => {
+                // Handle Google authentication URLs in a dedicated auth window
+                if (url.includes('accounts.google.com') ||
+                    url.includes('google.com/signin') ||
+                    url.includes('accounts.youtube.com')) {
+
+                    // Create auth window with same session partition as webview
+                    openAuthWindow(url)
+                    return { action: 'deny' }
+                }
+                // Allow other popups to open normally
+                return { action: 'allow' }
+            })
+        }
     })
 
     // Basic IPC handlers
@@ -106,6 +146,82 @@ function createWindow() {
     })
 }
 
+/**
+ * Opens a dedicated authentication window for Google Sign-In.
+ * Uses the same session partition as the webview to share cookies/authentication.
+ * This bypasses Google's embedded browser security check while maintaining session continuity.
+ */
+function openAuthWindow(authUrl: string) {
+    // Don't open multiple auth windows
+    if (authWindow && !authWindow.isDestroyed()) {
+        authWindow.focus()
+        return
+    }
+
+    // Get the persisted session that the webview uses
+    const geminiSession = session.fromPartition('persist:gemini')
+
+    authWindow = new BrowserWindow({
+        width: 500,
+        height: 700,
+        parent: win || undefined,
+        modal: false,
+        show: false,
+        icon: path.join(process.env.VITE_PUBLIC!, 'tray-icon.png'),
+        webPreferences: {
+            session: geminiSession,  // Share session with webview
+            nodeIntegration: false,
+            contextIsolation: true,
+        },
+    })
+
+    // Set a standard Chrome user agent using actual Chromium version
+    const chromiumVersion = process.versions.chrome
+    const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
+    authWindow.webContents.setUserAgent(chromeUserAgent)
+
+    // Show the window once it's ready
+    authWindow.once('ready-to-show', () => {
+        authWindow?.show()
+    })
+
+    // Monitor navigation to detect when auth is complete
+    authWindow.webContents.on('did-navigate', (event, url) => {
+        // Auth is complete when user returns to Gemini main page
+        if (url.includes('gemini.google.com') && !url.includes('accounts.google.com')) {
+            console.log('Google authentication completed successfully')
+
+            // Close auth window
+            authWindow?.close()
+
+            // Notify the renderer to reload the webview
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('auth-complete')
+            }
+        }
+    })
+
+    // Also check in-page navigation (for SPA-style redirects)
+    authWindow.webContents.on('did-navigate-in-page', (event, url) => {
+        if (url.includes('gemini.google.com') && !url.includes('accounts.google.com')) {
+            console.log('Google authentication completed (in-page navigation)')
+            authWindow?.close()
+
+            if (win && !win.isDestroyed()) {
+                win.webContents.send('auth-complete')
+            }
+        }
+    })
+
+    // Clean up reference when window is closed
+    authWindow.on('closed', () => {
+        authWindow = null
+    })
+
+    // Load the Google auth URL
+    authWindow.loadURL(authUrl)
+}
+
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
 // explicitly with Cmd + Q.
@@ -125,6 +241,15 @@ app.on('activate', () => {
 })
 
 app.whenReady().then(() => {
+    // Configure the persistent session for the Gemini webview
+    // Use the ACTUAL Chromium version to prevent detection/compatibility issues
+    const chromiumVersion = process.versions.chrome
+    const chromeUserAgent = `Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromiumVersion} Safari/537.36`
+
+    const geminiSession = session.fromPartition('persist:gemini')
+    geminiSession.setUserAgent(chromeUserAgent)
+    console.log(`Gemini session configured with Chrome/${chromiumVersion}`)
+
     createWindow()
 
 

@@ -9,5 +9,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     setShortcutEnabled: (enabled: boolean, key: string) => ipcRenderer.send('set-shortcut-enabled', enabled, key),
     onOpenSettings: (callback: () => void) => {
         ipcRenderer.on('open-settings', () => callback())
+    },
+    onAuthComplete: (callback: () => void) => {
+        ipcRenderer.on('auth-complete', () => callback())
     }
 })
