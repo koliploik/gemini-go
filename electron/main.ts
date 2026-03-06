@@ -1,7 +1,8 @@
-import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session, dialog } from 'electron'
+import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session, dialog, clipboard } from 'electron'
 import path from 'node:path'
 
 // Auth window reference
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 let authWindow: BrowserWindow | null = null
 
 // Type-safe app reference
@@ -61,8 +62,8 @@ function createWindow() {
         },
     })
 
-    // Use Firefox user agent to bypass Chromium-specific checks
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
+    // Use Firefox user agent to bypass Google's embedded browser detection
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
     win.webContents.setUserAgent(userAgent)
     console.log('Using Firefox UA')
 
@@ -76,6 +77,14 @@ function createWindow() {
     app.on('web-contents-created', (event, webContents) => {
         webContents.on('context-menu', (event, params) => {
             const menu = Menu.buildFromTemplate([
+                {
+                    label: 'Copia link',
+                    click: () => {
+                        clipboard.writeText(params.linkURL)
+                    },
+                    visible: params.linkURL.length > 0
+                },
+                { type: 'separator', visible: params.linkURL.length > 0 },
                 {
                     label: 'Copia',
                     role: 'copy',
@@ -100,9 +109,29 @@ function createWindow() {
             // Prevent webview from being throttled during streaming
             webContents.setBackgroundThrottling(false)
 
-            // Ensure webview keeps running when window is occluded/hidden
+            // Inject keepalive script to prevent Chromium from suspending the webview
+            // when the window is hidden, minimized or loses focus
+            webContents.on('did-finish-load', () => {
+                webContents.executeJavaScript(`
+                    if (!window.__geminiGoKeepalive) {
+                        window.__geminiGoKeepalive = setInterval(() => {
+                            // Minimal work to keep the renderer alive
+                            void document.hidden;
+                        }, 5000);
+                        console.log('[Gemini GO] Keepalive injected');
+                    }
+                `).catch(() => { })
+            })
+
+            // Auto-reload webview if renderer crashes
             webContents.on('render-process-gone', (event, details) => {
                 console.error('Webview render process gone:', details.reason)
+                // Attempt to reload after a short delay
+                if (details.reason !== 'clean-exit') {
+                    setTimeout(() => {
+                        try { webContents.reload() } catch (e) { /* webview may be destroyed */ }
+                    }, 1500)
+                }
             })
 
             webContents.setWindowOpenHandler(({ url }) => {
@@ -164,6 +193,7 @@ function createWindow() {
  * Uses the same session partition as the webview to share cookies/authentication.
  * This bypasses Google's embedded browser security check while maintaining session continuity.
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function openAuthWindow(authUrl: string) {
     // Don't open multiple auth windows
     if (authWindow && !authWindow.isDestroyed()) {
@@ -189,8 +219,8 @@ function openAuthWindow(authUrl: string) {
         },
     })
 
-    // Use Firefox user agent to bypass Chromium-specific embedded browser checks
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
+    // Use a recent Chrome user agent for best compatibility
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
     authWindow.webContents.setUserAgent(userAgent)
 
     // Inject script to hide Electron detection markers
@@ -273,8 +303,7 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
     // Configure the persistent session for the Gemini webview
-    // Use Firefox user agent to bypass Chromium-specific checks
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:134.0) Gecko/20100101 Firefox/134.0'
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
 
     const geminiSession = session.fromPartition('persist:gemini')
     geminiSession.setUserAgent(userAgent)
@@ -383,7 +412,7 @@ function registerShortcuts(key: string) {
     globalShortcut.unregisterAll()
 
     // Register the specific key requested
-    let ret = globalShortcut.register(key, () => {
+    const ret = globalShortcut.register(key, () => {
         toggleWindow('shortcut')
     })
 
