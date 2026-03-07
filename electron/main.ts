@@ -36,7 +36,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials')
 
 // Improve network stability for streaming
-app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
+app.commandLine.appendSwitch('enable-features', 'NetworkService')
 
 // Disable WebAuthn/Passkeys to prevent Google from requiring them
 // This forces traditional password authentication
@@ -44,6 +44,8 @@ app.commandLine.appendSwitch('disable-webauthn')
 
 // Make the app appear more like a standard browser
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
+
+app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
 
 function createWindow() {
     win = new BrowserWindow({
@@ -307,7 +309,16 @@ app.whenReady().then(() => {
 
     const geminiSession = session.fromPartition('persist:gemini')
     geminiSession.setUserAgent(userAgent)
-    console.log('Gemini session configured with Firefox UA')
+
+    // Explicitly delete Chromium client hints just in case the out-of-process Network Service leaks them
+    geminiSession.webRequest.onBeforeSendHeaders((details, callback) => {
+        delete details.requestHeaders['sec-ch-ua']
+        delete details.requestHeaders['sec-ch-ua-mobile']
+        delete details.requestHeaders['sec-ch-ua-platform']
+        callback({ cancel: false, requestHeaders: details.requestHeaders })
+    })
+
+    console.log('Gemini session configured with Firefox UA and stripped client hints')
 
     createWindow()
 
