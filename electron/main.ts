@@ -297,24 +297,46 @@ app.whenReady().then(() => {
             // Prevent webview from being throttled during streaming
             webContents.setBackgroundThrottling(false)
 
+            // Forward webview console messages to main process for debugging
+            webContents.on('console-message', (event, level, message, line, sourceId) => {
+                const levelLabel = ['LOG', 'WARN', 'ERROR'][level] || 'INFO'
+                console.log(`[Webview ${levelLabel}] ${message}`)
+            })
+
+            // Detect page load failures
+            webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL) => {
+                console.error(`[Webview LOAD FAILED] ${errorCode}: ${errorDescription} at ${validatedURL}`)
+            })
+
+            // Detect unresponsive webview
+            webContents.on('unresponsive', () => {
+                console.error('[Webview] Page became unresponsive!')
+            })
+            webContents.on('responsive', () => {
+                console.log('[Webview] Page became responsive again')
+            })
+
             // Inject keepalive script to prevent Chromium from suspending the webview
-            // Use dom-ready so it re-injects on SPA navigations if lost.
+            // Uses DOM-only operations (no network requests) to avoid interfering
+            // with Gemini's streaming connections which could cause Error 13
             webContents.on('dom-ready', () => {
                 webContents.executeJavaScript(`
                     if (!window.__geminiGoKeepalive) {
                         window.__geminiGoKeepalive = setInterval(() => {
-                            // Active network/DOM ping to force the renderer to stay awake
-                            fetch('/generate_204').catch(() => {});
-                            void document.body.offsetTop; // force reflow
-                        }, 12000);
-                        console.log('[Gemini GO] Active keepalive injected');
+                            // DOM-only keepalive: force layout recalculation
+                            // without making network requests that could
+                            // interfere with Gemini's streaming
+                            void document.body.offsetHeight;
+                            void document.body.clientWidth;
+                        }, 15000);
+                        console.log('[Gemini GO] DOM keepalive injected');
                     }
                 `).catch(() => { })
             })
 
             // Auto-reload webview if renderer crashes
             webContents.on('render-process-gone', (event, details) => {
-                console.error('Webview render process gone:', details.reason)
+                console.error('[Webview] Render process gone:', details.reason)
                 if (details.reason !== 'clean-exit') {
                     setTimeout(() => {
                         try { webContents.reload() } catch (e) { }
