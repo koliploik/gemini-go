@@ -36,7 +36,7 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials')
 
 // Improve network stability for streaming
-app.commandLine.appendSwitch('enable-features', 'NetworkService')
+app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
 
 // Disable WebAuthn/Passkeys to prevent Google from requiring them
 // This forces traditional password authentication
@@ -75,110 +75,7 @@ function createWindow() {
         win.loadFile(path.join(process.env.DIST!, 'index.html'))
     }
 
-    // Global Context Menu (Right-click) - works for main window AND webviews
-    app.on('web-contents-created', (event, webContents) => {
-        webContents.on('context-menu', (event, params) => {
-            const menu = Menu.buildFromTemplate([
-                {
-                    label: 'Copia link',
-                    click: () => {
-                        clipboard.writeText(params.linkURL)
-                    },
-                    visible: params.linkURL.length > 0
-                },
-                { type: 'separator', visible: params.linkURL.length > 0 },
-                {
-                    label: 'Copia',
-                    role: 'copy',
-                    enabled: params.selectionText.length > 0
-                },
-                {
-                    label: 'Incolla',
-                    role: 'paste'
-                },
-                { type: 'separator' },
-                {
-                    label: 'Seleziona tutto',
-                    role: 'selectAll'
-                }
-            ])
-            menu.popup()
-        })
-
-        // Handle Google OAuth - open in SYSTEM BROWSER (Chrome/Edge)
-        // Google blocks embedded browsers but trusts the user's real browser
-        if (webContents.getType() === 'webview') {
-            // Prevent webview from being throttled during streaming
-            webContents.setBackgroundThrottling(false)
-
-            // Inject keepalive script to prevent Chromium from suspending the webview
-            // when the window is hidden, minimized or loses focus
-            webContents.on('did-finish-load', () => {
-                webContents.executeJavaScript(`
-                    if (!window.__geminiGoKeepalive) {
-                        window.__geminiGoKeepalive = setInterval(() => {
-                            // Minimal work to keep the renderer alive
-                            void document.hidden;
-                        }, 5000);
-                        console.log('[Gemini GO] Keepalive injected');
-                    }
-                `).catch(() => { })
-            })
-
-            // Auto-reload webview if renderer crashes
-            webContents.on('render-process-gone', (event, details) => {
-                console.error('Webview render process gone:', details.reason)
-                // Attempt to reload after a short delay
-                if (details.reason !== 'clean-exit') {
-                    setTimeout(() => {
-                        try { webContents.reload() } catch (e) { /* webview may be destroyed */ }
-                    }, 1500)
-                }
-            })
-
-            webContents.setWindowOpenHandler(({ url }) => {
-                // Handle Google authentication URLs
-                // Instead of opening a popup (which Google blocks), navigate the webview directly
-                if (url.includes('accounts.google.com') ||
-                    url.includes('google.com/signin') ||
-                    url.includes('accounts.youtube.com')) {
-
-                    // Navigate the webview itself to the auth URL
-                    // This avoids the popup/embedded browser detection
-                    webContents.loadURL(url)
-
-                    return { action: 'deny' }
-                }
-                // Allow other popups to open normally
-                return { action: 'allow' }
-            })
-        }
-    })
-
-    // Basic IPC handlers
-    ipcMain.on('toggle-always-on-top', (event, flag) => {
-        if (win) win.setAlwaysOnTop(flag)
-    })
-
-    ipcMain.handle('get-app-version', () => {
-        return app.getVersion()
-    })
-
-    ipcMain.on('minimize-window', () => {
-        if (win) win.minimize()
-    })
-
-    ipcMain.on('clear-session', async () => {
-        if (win) {
-            await win.webContents.session.clearStorageData()
-            win.reload()
-        }
-    })
-
-    ipcMain.on('close-window', () => {
-        if (win) win.hide()
-    })
-
+    // (Event listener moved to app.whenReady to prevent duplicates)
     // Handle close functionality - intercept 'x' button
     win.on('close', (event) => {
         // Prevent window from being destroyed, just hide it
@@ -189,6 +86,30 @@ function createWindow() {
         return false
     })
 }
+
+// Basic IPC handlers (Moved outside createWindow to prevent duplicate registration)
+ipcMain.on('toggle-always-on-top', (event, flag) => {
+    if (win) win.setAlwaysOnTop(flag)
+})
+
+ipcMain.handle('get-app-version', () => {
+    return app.getVersion()
+})
+
+ipcMain.on('minimize-window', () => {
+    if (win) win.minimize()
+})
+
+ipcMain.on('clear-session', async () => {
+    if (win) {
+        await win.webContents.session.clearStorageData()
+        win.reload()
+    }
+})
+
+ipcMain.on('close-window', () => {
+    if (win) win.hide()
+})
 
 /**
  * Opens a dedicated authentication window for Google Sign-In.
@@ -221,7 +142,7 @@ function openAuthWindow(authUrl: string) {
         },
     })
 
-    // Use a recent Chrome user agent for best compatibility
+    // Use a recent Firefox user agent for best compatibility
     const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
     authWindow.webContents.setUserAgent(userAgent)
 
@@ -310,15 +231,7 @@ app.whenReady().then(() => {
     const geminiSession = session.fromPartition('persist:gemini')
     geminiSession.setUserAgent(userAgent)
 
-    // Explicitly delete Chromium client hints just in case the out-of-process Network Service leaks them
-    geminiSession.webRequest.onBeforeSendHeaders((details, callback) => {
-        delete details.requestHeaders['sec-ch-ua']
-        delete details.requestHeaders['sec-ch-ua-mobile']
-        delete details.requestHeaders['sec-ch-ua-platform']
-        callback({ cancel: false, requestHeaders: details.requestHeaders })
-    })
-
-    console.log('Gemini session configured with Firefox UA and stripped client hints')
+    console.log('Gemini session configured with Firefox UA')
 
     createWindow()
 
@@ -347,6 +260,78 @@ app.whenReady().then(() => {
 
     tray.on('click', () => {
         toggleWindow('tray')
+    })
+
+    // Global Context Menu (Right-click) - works for main window AND webviews
+    // Placed here so it only registers once.
+    app.on('web-contents-created', (event, webContents) => {
+        webContents.on('context-menu', (event, params) => {
+            const menu = Menu.buildFromTemplate([
+                {
+                    label: 'Copia link',
+                    click: () => {
+                        clipboard.writeText(params.linkURL)
+                    },
+                    visible: params.linkURL.length > 0
+                },
+                { type: 'separator', visible: params.linkURL.length > 0 },
+                {
+                    label: 'Copia',
+                    role: 'copy',
+                    enabled: params.selectionText.length > 0
+                },
+                {
+                    label: 'Incolla',
+                    role: 'paste'
+                },
+                { type: 'separator' },
+                {
+                    label: 'Seleziona tutto',
+                    role: 'selectAll'
+                }
+            ])
+            menu.popup()
+        })
+
+        if (webContents.getType() === 'webview') {
+            // Prevent webview from being throttled during streaming
+            webContents.setBackgroundThrottling(false)
+
+            // Inject keepalive script to prevent Chromium from suspending the webview
+            // Use dom-ready so it re-injects on SPA navigations if lost.
+            webContents.on('dom-ready', () => {
+                webContents.executeJavaScript(`
+                    if (!window.__geminiGoKeepalive) {
+                        window.__geminiGoKeepalive = setInterval(() => {
+                            // Active network/DOM ping to force the renderer to stay awake
+                            fetch('/generate_204').catch(() => {});
+                            void document.body.offsetTop; // force reflow
+                        }, 12000);
+                        console.log('[Gemini GO] Active keepalive injected');
+                    }
+                `).catch(() => { })
+            })
+
+            // Auto-reload webview if renderer crashes
+            webContents.on('render-process-gone', (event, details) => {
+                console.error('Webview render process gone:', details.reason)
+                if (details.reason !== 'clean-exit') {
+                    setTimeout(() => {
+                        try { webContents.reload() } catch (e) { }
+                    }, 1500)
+                }
+            })
+
+            webContents.setWindowOpenHandler(({ url }) => {
+                if (url.includes('accounts.google.com') ||
+                    url.includes('google.com/signin') ||
+                    url.includes('accounts.youtube.com')) {
+                    webContents.loadURL(url)
+                    return { action: 'deny' }
+                }
+                return { action: 'allow' }
+            })
+        }
     })
 
     // We don't call registerShortcuts here anymore, 

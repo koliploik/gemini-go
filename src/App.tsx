@@ -116,7 +116,7 @@ function App() {
         </div>
       </header>
 
-      {showSettings ? (
+      {showSettings && (
         <div className="settings-page">
           <h2>Settings</h2>
           <div className="setting-item">
@@ -178,18 +178,18 @@ function App() {
             <p>Version {appVersion}</p>
           </div>
         </div>
-      ) : (
-        <div className="webview-container">
-          <webview
-            ref={webviewRef}
-            src="https://gemini.google.com"
-            className="gemini-view"
-            partition="persist:gemini"
-            // @ts-ignore
-            allowpopups="true"
-          />
-        </div>
       )}
+      
+      <div className="webview-container" style={{ display: showSettings ? 'none' : 'flex' }}>
+        <webview
+          ref={webviewRef}
+          src="https://gemini.google.com"
+          className="gemini-view"
+          partition="persist:gemini"
+          // @ts-ignore
+          allowpopups="true"
+        />
+      </div>
     </div>
   )
 }
