@@ -33,10 +33,15 @@ app.commandLine.appendSwitch('disable-renderer-backgrounding')
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 
 // Prevent connection drops during long streaming responses
-app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials')
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials,NetworkServiceInProcess')
 
-// Improve network stability for streaming
-app.commandLine.appendSwitch('enable-features', 'NetworkService,NetworkServiceInProcess')
+// Network service out-of-process: streaming won't pause if renderer throttles
+app.commandLine.appendSwitch('enable-features', 'NetworkService')
+
+// Force HTTP/1.1 — prevents stream drops from HTTP/2 RST_STREAM and QUIC packet loss.
+// SSE on H1.1 = one TCP per stream, cleaner failure mode, no multiplexing head-of-line.
+app.commandLine.appendSwitch('disable-http2')
+app.commandLine.appendSwitch('disable-quic')
 
 // Disable WebAuthn/Passkeys to prevent Google from requiring them
 // This forces traditional password authentication
@@ -297,10 +302,9 @@ app.whenReady().then(() => {
             // Prevent webview from being throttled during streaming
             webContents.setBackgroundThrottling(false)
 
-            // Forward webview console messages to main process for debugging
-            webContents.on('console-message', (event, level, message, line, sourceId) => {
-                const levelLabel = ['LOG', 'WARN', 'ERROR'][level] || 'INFO'
-                console.log(`[Webview ${levelLabel}] ${message}`)
+            // Forward only errors to main process — avoids IPC flood during streaming
+            webContents.on('console-message', (event, level, message) => {
+                if (level >= 2) console.log(`[Webview ERROR] ${message}`)
             })
 
             // Detect page load failures
@@ -316,31 +320,43 @@ app.whenReady().then(() => {
                 console.log('[Webview] Page became responsive again')
             })
 
-            // Inject keepalive script to prevent Chromium from suspending the webview
-            // Uses DOM-only operations (no network requests) to avoid interfering
-            // with Gemini's streaming connections which could cause Error 13
+            // Hide automation/Chromium markers — Firefox UA alone is not enough.
+            // Google fingerprints navigator.webdriver, window.chrome, plugins,
+            // languages mid-stream and kills the SSE connection (error 13)
+            // when they mismatch the claimed UA. Inject on dom-ready so the
+            // JS context exists; Gemini's own network calls happen slightly after.
             webContents.on('dom-ready', () => {
                 webContents.executeJavaScript(`
+                    try {
+                        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
+                        Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
+                        Object.defineProperty(navigator, 'vendor', { get: () => '' });
+                        if (window.chrome) delete window.chrome;
+                    } catch(e) {}
                     if (!window.__geminiGoKeepalive) {
                         window.__geminiGoKeepalive = setInterval(() => {
-                            // DOM-only keepalive: force layout recalculation
-                            // without making network requests that could
-                            // interfere with Gemini's streaming
-                            void document.body.offsetHeight;
-                            void document.body.clientWidth;
-                        }, 15000);
-                        console.log('[Gemini GO] DOM keepalive injected');
+                            window.__geminiGoTick = Date.now();
+                        }, 5000);
+                        console.log('[Gemini GO] anti-detect + keepalive injected');
                     }
                 `).catch(() => { })
             })
 
             // Auto-reload webview if renderer crashes
             webContents.on('render-process-gone', (event, details) => {
-                console.error('[Webview] Render process gone:', details.reason)
+                console.error('[Webview] Render process gone:', details.reason, 'exitCode:', details.exitCode)
                 if (details.reason !== 'clean-exit') {
                     setTimeout(() => {
                         try { webContents.reload() } catch (e) { }
                     }, 1500)
+                }
+            })
+
+            // Log network errors — helps diagnose stream drops mid-generation
+            webContents.session.webRequest.onErrorOccurred((details) => {
+                if (details.url.includes('google.com') && !details.error.includes('ABORTED')) {
+                    console.error(`[Network] ${details.error} on ${details.url.substring(0, 80)}`)
                 }
             })
 
