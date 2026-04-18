@@ -1,5 +1,19 @@
 import { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu, nativeImage, shell, session, dialog, clipboard } from 'electron'
 import path from 'node:path'
+import fs from 'node:fs'
+
+// File logger — packaged exe has no console. Writes to userData/gemini-go.log
+// so hangs can be diagnosed after the fact.
+const logFile = path.join(app.getPath('userData'), 'gemini-go.log')
+try { fs.writeFileSync(logFile, `=== Session ${new Date().toISOString()} v${app.getVersion()} ===\n`) } catch {}
+const origLog = console.log, origErr = console.error
+const writeLog = (tag: string, args: unknown[]) => {
+    const line = `[${new Date().toISOString()}] ${tag} ${args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ')}\n`
+    try { fs.appendFileSync(logFile, line) } catch {}
+}
+console.log = (...a: unknown[]) => { writeLog('LOG', a); origLog(...a) }
+console.error = (...a: unknown[]) => { writeLog('ERR', a); origErr(...a) }
+console.log('Log file:', logFile)
 
 // Auth window reference
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -35,13 +49,11 @@ app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
 // Prevent connection drops during long streaming responses
 app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion,IntensiveWakeUpThrottling,WebAuthenticationChromeSyncedCredentials,NetworkServiceInProcess')
 
-// Network service out-of-process: streaming won't pause if renderer throttles
-app.commandLine.appendSwitch('enable-features', 'NetworkService')
-
-// Force HTTP/1.1 — prevents stream drops from HTTP/2 RST_STREAM and QUIC packet loss.
-// SSE on H1.1 = one TCP per stream, cleaner failure mode, no multiplexing head-of-line.
-app.commandLine.appendSwitch('disable-http2')
-app.commandLine.appendSwitch('disable-quic')
+// NetworkService OOP so renderer throttle doesn't pause streams.
+// AsyncDns + DoH to prevent ERR_NAME_NOT_RESOLVED on google.com subdomains
+// (signaler-pa is the BrowserChannel that streams Gemini tokens — DNS
+// failure there = mid-generation hang that never recovers).
+app.commandLine.appendSwitch('enable-features', 'NetworkService,AsyncDns,DnsOverHttps')
 
 // Disable WebAuthn/Passkeys to prevent Google from requiring them
 // This forces traditional password authentication
@@ -50,7 +62,7 @@ app.commandLine.appendSwitch('disable-webauthn')
 // Make the app appear more like a standard browser
 app.commandLine.appendSwitch('disable-blink-features', 'AutomationControlled')
 
-app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
+app.userAgentFallback = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
 
 function createWindow() {
     win = new BrowserWindow({
@@ -69,10 +81,12 @@ function createWindow() {
         },
     })
 
-    // Use Firefox user agent to bypass Google's embedded browser detection
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
+    // Use Chrome UA matching Electron's Chromium — TLS fingerprint matches UA,
+    // avoids anti-bot truncation of streaming responses (was Firefox UA; mismatch
+    // with Chromium JA3 caused Google to close streams mid-generation = error 13)
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
     win.webContents.setUserAgent(userAgent)
-    console.log('Using Firefox UA')
+    console.log('Using Chrome UA')
 
     if (VITE_DEV_SERVER_URL) {
         win.loadURL(VITE_DEV_SERVER_URL)
@@ -148,7 +162,7 @@ function openAuthWindow(authUrl: string) {
     })
 
     // Use a recent Firefox user agent for best compatibility
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
     authWindow.webContents.setUserAgent(userAgent)
 
     // Inject script to hide Electron detection markers
@@ -231,7 +245,7 @@ app.on('activate', () => {
 
 app.whenReady().then(() => {
     // Configure the persistent session for the Gemini webview
-    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:135.0) Gecko/20100101 Firefox/135.0'
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36'
 
     const geminiSession = session.fromPartition('persist:gemini')
     geminiSession.setUserAgent(userAgent)
@@ -302,9 +316,9 @@ app.whenReady().then(() => {
             // Prevent webview from being throttled during streaming
             webContents.setBackgroundThrottling(false)
 
-            // Forward only errors to main process — avoids IPC flood during streaming
+            // Errors only — avoid IPC flood during streaming
             webContents.on('console-message', (event, level, message) => {
-                if (level >= 2) console.log(`[Webview ERROR] ${message}`)
+                if (level >= 2) console.log(`[Webview ERROR] ${message.substring(0, 300)}`)
             })
 
             // Detect page load failures
@@ -328,11 +342,8 @@ app.whenReady().then(() => {
             webContents.on('dom-ready', () => {
                 webContents.executeJavaScript(`
                     try {
+                        // Match Chrome UA — keep window.chrome, vendor='Google Inc.'
                         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
-                        Object.defineProperty(navigator, 'plugins', { get: () => [1,2,3,4,5] });
-                        Object.defineProperty(navigator, 'languages', { get: () => ['en-US','en'] });
-                        Object.defineProperty(navigator, 'vendor', { get: () => '' });
-                        if (window.chrome) delete window.chrome;
                     } catch(e) {}
                     if (!window.__geminiGoKeepalive) {
                         window.__geminiGoKeepalive = setInterval(() => {
@@ -356,9 +367,10 @@ app.whenReady().then(() => {
             // Log network errors — helps diagnose stream drops mid-generation
             webContents.session.webRequest.onErrorOccurred((details) => {
                 if (details.url.includes('google.com') && !details.error.includes('ABORTED')) {
-                    console.error(`[Network] ${details.error} on ${details.url.substring(0, 80)}`)
+                    console.error(`[Network ERR] ${details.error} on ${details.url.substring(0, 120)}`)
                 }
             })
+
 
             webContents.setWindowOpenHandler(({ url }) => {
                 if (url.includes('accounts.google.com') ||
